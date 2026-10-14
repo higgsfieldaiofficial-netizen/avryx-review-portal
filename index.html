@@ -89,6 +89,24 @@
 
   var app = document.getElementById('app');
   var qs = new URLSearchParams(location.search);
+
+  // ---- auto-refresh when a new version is deployed ----
+  var SITE_V = '202610141800';
+  setInterval(function(){
+    fetch('v.txt?t=' + Date.now(), {cache:'no-store'})
+      .then(function(r){ if (!r.ok) throw 0; return r.text(); })
+      .then(function(t){ if (t.trim() && t.trim() !== SITE_V) location.reload(); })
+      .catch(function(){});
+  }, 45000);
+
+  // ---- global protection (active on every screen, including the code gate) ----
+  document.addEventListener('dragstart', function(e){ e.preventDefault(); });
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'F12') e.preventDefault();
+    if ((e.ctrlKey||e.metaKey) && ['s','p','u','c'].indexOf(e.key.toLowerCase()) !== -1) e.preventDefault();
+    if ((e.ctrlKey||e.metaKey) && e.shiftKey && ['i','j'].indexOf(e.key.toLowerCase()) !== -1) e.preventDefault();
+  });
+  document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   var tok = qs.get('t');
   var pid = qs.get('p');
 
@@ -113,16 +131,12 @@
       app.innerHTML = '<div class="card error"><h1>⛔ Invalid Link</h1></div>';
       return;
     }
+    // Gate file holds ONLY the code hash — video URLs are never sent before the code is entered.
     fetch('p/' + clean + '.json', {cache:'no-store'})
       .then(function(r){ if (!r.ok) throw 0; return r.json(); })
-      .then(function(j){
-        if (!j.d || cyrb53(j.d + SECRET, 7) !== j.s) throw 0;
-        var data = JSON.parse(b64urlDecode(j.d));
-        if (Date.now() > data.e * 1000){
-          app.innerHTML = '<div class="card error"><h1>⌛ Link Expired</h1><p>This review link has expired.<br>Please ask Avryx Studio for a fresh link.</p></div>';
-          return;
-        }
-        boot(data);
+      .then(function(g){
+        if (!g.h) throw 0;
+        startPlaylistGate(g.h);
       })
       .catch(function(){
         app.innerHTML = '<div class="card error"><h1>⛔ Invalid Link</h1><p>This review link is not valid.<br>Please check the link or contact Avryx Studio.</p></div>';
@@ -132,7 +146,56 @@
     return;
   }
 
-  function boot(d){
+  // ---- playlist (?p=) flow: code hash gate, video list loads only after the code ----
+  function playlistDataFile(hash){
+    return 'p/d_' + cyrb53(hash + '#' + SECRET, 7) + '.json';
+  }
+  function openPlaylist(hash){
+    fetch(playlistDataFile(hash), {cache:'no-store'})
+      .then(function(r){ if (!r.ok) throw 0; return r.json(); })
+      .then(function(j){
+        if (!j.d || cyrb53(j.d + SECRET, 7) !== j.s) throw 0;
+        var data = JSON.parse(b64urlDecode(j.d));
+        if (Date.now() > data.e * 1000){
+          app.innerHTML = '<div class="card error"><h1>⌛ Link Expired</h1><p>This review link has expired.<br>Please ask Avryx Studio for a fresh link.</p></div>';
+          return;
+        }
+        try { localStorage.setItem('avx_session', JSON.stringify({h:hash, t:Date.now()})); } catch(e){}
+        boot(data, true);
+      })
+      .catch(function(){
+        app.innerHTML = '<div class="card error"><h1>⛔ Invalid Link</h1><p>Could not load the videos.<br>Please check the link or contact Avryx Studio.</p></div>';
+      });
+  }
+  function startPlaylistGate(hash){
+    try {
+      var s = JSON.parse(localStorage.getItem('avx_session')||'null');
+      if (s && s.h === hash){ openPlaylist(hash); return; }
+    } catch(e){}
+    app.innerHTML = '<div class="card" style="max-width:420px;margin:40px auto">' +
+      '<h1>🔑 Enter Access Code</h1>' +
+      '<p>Enter the 6-digit access code shared with you by Avryx Studio.</p>' +
+      '<input type="text" id="codeIn" inputmode="numeric" maxlength="6" placeholder="••••••" style="text-align:center;font-size:24px;letter-spacing:8px;font-weight:800">' +
+      '<br><button id="codeBtn">Unlock Videos</button>' +
+      '<p id="codeMsg" style="font-size:13px;margin-top:12px"></p></div>';
+    var inp = document.getElementById('codeIn');
+    inp.focus();
+    function tryUnlock(){
+      var val = inp.value.replace(/\D/g,'');
+      if (val && cyrb53(val + SECRET, 7) === hash){
+        openPlaylist(hash);
+      } else {
+        var m = document.getElementById('codeMsg');
+        m.textContent = 'Wrong code. Try again.';
+        m.style.color = '#ff5555';
+        inp.select();
+      }
+    }
+    document.getElementById('codeBtn').onclick = tryUnlock;
+    inp.addEventListener('keydown', function(e){ if (e.key === 'Enter') tryUnlock(); });
+  }
+
+  function boot(d, skipGate){
   var clientName = d.n || 'Guest';
 
   // ---- access code gate (session persists on this device until link expiry) ----
@@ -193,13 +256,19 @@
     } else { vids.forEach(loadVid); }
 
     function moveWm(wrap){
+      var v = wrap.querySelector('video');
       var wm = wrap.querySelector('.watermark');
       var ts = new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',second:'2-digit'});
       wm.textContent = '© ' + clientName + '  •  ' + ts;
-      var maxX = Math.max(0, wrap.clientWidth - wm.offsetWidth - 16);
-      var maxY = Math.max(0, wrap.clientHeight - 40);
-      wm.style.left = (8 + Math.random()*maxX) + 'px';
-      wm.style.top = (8 + Math.random()*maxY) + 'px';
+      // keep the watermark ON the video pixels (not in fullscreen letterbox bars)
+      var wr = wrap.getBoundingClientRect();
+      var vr = v.getBoundingClientRect();
+      var vx = Math.max(0, vr.left - wr.left), vy = Math.max(0, vr.top - wr.top);
+      var vw = Math.min(vr.width, wr.width - vx), vh = Math.min(vr.height, wr.height - vy);
+      var maxX = Math.max(0, vw - wm.offsetWidth - 16);
+      var maxY = Math.max(0, vh - wm.offsetHeight - 64); // stay clear of the control bar
+      wm.style.left = (vx + 8 + Math.random()*maxX) + 'px';
+      wm.style.top = (vy + 8 + Math.random()*maxY) + 'px';
     }
     var wraps = Array.prototype.slice.call(document.querySelectorAll('.videowrap'));
     function fmtT(s){ s=Math.max(0,Math.floor(s||0)); var m=Math.floor(s/60), ss=s%60; return m+':'+(ss<10?'0':'')+ss; }
@@ -237,18 +306,11 @@
       setInterval(function(){ moveWm(w); }, 4000);
     });
 
-    document.addEventListener('dragstart', function(e){ e.preventDefault(); });
-    document.addEventListener('keydown', function(e){
-      if (e.key === 'F12') e.preventDefault();
-      if ((e.ctrlKey||e.metaKey) && ['s','p','u','c'].indexOf(e.key.toLowerCase()) !== -1) e.preventDefault();
-      if ((e.ctrlKey||e.metaKey) && e.shiftKey && ['i','j'].indexOf(e.key.toLowerCase()) !== -1) e.preventDefault();
-    });
-    document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   }
 
   // entry: code gate if the link carries a code, else direct gallery.
   // Once unlocked, the session persists on this device — refresh won't ask for the code again — until the link expires.
-  if (d.code){
+  if (d.code && !skipGate){
     var s = getSession();
     if (s && s.nonce === d.nonce){
       renderGallery();
