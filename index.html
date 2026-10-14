@@ -20,8 +20,9 @@
   .clip { background:#141414; border:1px solid #222; border-radius:14px; padding:20px; margin-bottom:20px; }
   .cliphead { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px; }
   .cliphead h2 { font-size:17px; }
-  .videowrap { position:relative; width:100%; border-radius:12px; overflow:hidden; background:#000; border:1px solid #222; }
-  video { width:100%; display:block; max-height:70vh; }
+  .videowrap { position:relative; width:100%; border-radius:12px; overflow:hidden; background:#000; border:1px solid #222; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
+  video { width:100%; display:block; max-height:70vh; -webkit-touch-callout:none; }
+  body { -webkit-user-select:none; user-select:none; }
   .watermark { position:absolute; pointer-events:none; color:rgba(255,255,255,.55); font-size:15px; font-weight:600; text-shadow:0 1px 4px rgba(0,0,0,.8); white-space:nowrap; transition:top 1s ease,left 1s ease; z-index:5; }
   .ccontrols { position:absolute; left:0; right:0; bottom:0; display:flex; align-items:center; gap:10px; padding:10px 12px; background:linear-gradient(transparent, rgba(0,0,0,.7)); z-index:6; }
   .ccontrols button { background:rgba(255,255,255,.16); border:0; color:#fff; width:36px; height:36px; border-radius:50%; font-size:15px; cursor:pointer; flex:0 0 auto; }
@@ -175,14 +176,15 @@
 
     d.pl.forEach(function(clip, i){
       html += '<div class="clip"><div class="cliphead"><h2>🎬 ' + esc(clip.t || ('Clip ' + (i+1))) + '</h2></div>' +
-        '<div class="videowrap"><video playsinline disablepictureinpicture preload="metadata" data-src="' + esc(clip.v) + '"></video><div class="watermark"></div>' +
+        '<div class="videowrap"><video playsinline disablepictureinpicture disableremoteplayback preload="metadata" data-s="' + btoa(clip.v).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'') + '"></video><div class="watermark"></div>' +
         '<div class="ccontrols"><button class="cc-play" aria-label="Play">▶</button><div class="cc-track"><div class="cc-fill"></div></div><span class="cc-time">0:00 / 0:00</span><button class="cc-mute" aria-label="Mute">🔊</button><button class="cc-fs" aria-label="Fullscreen">⛶</button></div></div></div>';
     });
     html += '<p class="note" style="text-align:center">These videos are watermarked and tracked. Downloading, screen recording or redistribution is prohibited.</p>';
     app.innerHTML = html;
 
-    var vids = Array.prototype.slice.call(document.querySelectorAll('video[data-src]'));
-    function loadVid(v){ if (!v.src){ v.src = v.getAttribute('data-src'); v.load(); } }
+    function decS(s){ s = String(s||'').replace(/-/g,'+').replace(/_/g,'/'); while (s.length % 4) s += '='; return atob(s); }
+    var vids = Array.prototype.slice.call(document.querySelectorAll('video[data-s]'));
+    function loadVid(v){ if (!v.src){ v.src = decS(v.getAttribute('data-s')); v.removeAttribute('data-s'); v.load(); } }
     if ('IntersectionObserver' in window){
       var io = new IntersectionObserver(function(es){
         es.forEach(function(en){ if (en.isIntersecting){ loadVid(en.target); io.unobserve(en.target); } });
@@ -210,7 +212,7 @@
       var fill = w.querySelector('.cc-fill');
       var timeEl = w.querySelector('.cc-time');
       function updPlay(){ playBtn.textContent = v.paused ? '▶' : '⏸'; }
-      function toggle(){ if (v.paused){ v.play(); } else { v.pause(); } updPlay(); }
+      function toggle(){ loadVid(v); if (v.paused){ v.play(); } else { v.pause(); } updPlay(); }
       playBtn.onclick = toggle;
       v.addEventListener('click', toggle);
       v.addEventListener('play', updPlay);
