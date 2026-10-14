@@ -61,10 +61,15 @@
     <button class="add" onclick="addClip()">＋ Add clip</button>
     <br><button onclick="genLink()">Generate Link</button>
     <div id="result">
-      <label>Secure review link — send this to the client:</label>
+      <label>🔑 One-time access code — send this to the client:</label>
+      <div id="codeOut" style="background:#0d0d0d;border:2px solid #ff2222;color:#fff;padding:16px;border-radius:8px;font-size:32px;font-weight:800;letter-spacing:6px;text-align:center;margin-top:10px"></div>
+      <button class="ghost" onclick="copyCode()">📋 Copy code</button>
+      <button class="ghost" onclick="newCode()">🔄 New code</button>
+      <label style="margin-top:16px">Secure review link:</label>
       <div id="linkOut"></div>
-      <button class="ghost" onclick="copyLink()">📋 Copy</button>
+      <button class="ghost" onclick="copyLink()">📋 Copy link</button>
       <a id="openLink" href="#" target="_blank"><button class="ghost">🔍 Test Open</button></a>
+      <p style="font-size:12px;color:#888;margin-top:10px">Client opens the link → enters this code → watches once. On refresh the code is asked again (used codes don't work twice).</p>
     </div>
     <div class="warn">⚠️ <b>Video hosting:</b> paste any <b>direct</b> video link (Google Drive direct link, or a file on this portal). Drive share-links won't play — use the direct format:<br><code>https://drive.google.com/uc?export=download&amp;id=FILE_ID</code><br>Tip: keep portal-hosted MP4s faststart-encoded so they stream instantly.</div>
     <div class="hist"><h2>🕘 Recent links (this device)</h2><div id="histList"></div></div>
@@ -130,11 +135,13 @@
     if (!h.length){ box.innerHTML = '<p style="color:#555;font-size:12px">No links generated yet.</p>'; return; }
     box.innerHTML = h.map(function(x){
       var dt = new Date(x.at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-      return '<div class="hitem"><a href="'+x.link+'" target="_blank">'+x.link+'</a><div class="hm">'+esc(x.label)+' — '+dt+'</div></div>';
+      return '<div class="hitem"><a href="'+x.link+'" target="_blank">'+x.link+'</a><div class="hm">'+esc(x.label)+' — '+dt+(x.code ? ' — 🔑 ' + esc(x.code.slice(0,3)+' '+x.code.slice(3)) : '')+'</div></div>';
     }).join('');
   }
 
-  var lastLink = '';
+  var lastLink = '', lastCode = '';
+  function randCode(){ return String(Math.floor(100000 + Math.random()*900000)); }
+  function randNonce(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
   window.genLink = function(){
     var name = document.getElementById('fName').value.trim() || 'Guest';
     var hrs = Math.max(1, parseInt(document.getElementById('fHrs').value||'48',10));
@@ -146,14 +153,23 @@
       if (u) pl.push({ t: t || ('Clip ' + (i+1)), v: u });
     });
     if (!pl.length){ alert('Add at least one clip with a video URL'); return; }
-    var payload = { pl: pl, n: name, e: Math.floor(Date.now()/1000) + hrs*3600 };
+    lastCode = randCode();
+    var payload = { pl: pl, n: name, e: Math.floor(Date.now()/1000) + hrs*3600, code: lastCode, nonce: randNonce() };
     var pb = b64urlEncode(JSON.stringify(payload));
     lastLink = BASE + '?t=' + pb + '.' + cyrb53(pb + SECRET, 7);
+    document.getElementById('codeOut').textContent = lastCode.slice(0,3) + ' ' + lastCode.slice(3);
     document.getElementById('linkOut').textContent = lastLink;
     document.getElementById('openLink').href = lastLink;
     document.getElementById('result').style.display='block';
-    saveHist({ link:lastLink, label: pl.length + ' clip(s) — ' + name, at:Date.now() });
+    saveHist({ link:lastLink, code:lastCode, label: pl.length + ' clip(s) — ' + name, at:Date.now() });
     renderHist();
+  };
+  window.newCode = function(){ genLink(); window.scrollTo(0, document.getElementById('result').offsetTop - 20); };
+  window.copyCode = function(){
+    var c = lastCode.slice(0,3) + ' ' + lastCode.slice(3);
+    if (navigator.clipboard) navigator.clipboard.writeText(c);
+    else { var t=document.createElement('textarea'); t.value=c; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+    alert('Code copied!');
   };
   window.copyLink = function(){
     if (navigator.clipboard) navigator.clipboard.writeText(lastLink);
