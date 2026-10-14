@@ -77,23 +77,51 @@
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   var app = document.getElementById('app');
-  var tok = new URLSearchParams(location.search).get('t');
+  var qs = new URLSearchParams(location.search);
+  var tok = qs.get('t');
+  var pid = qs.get('p');
 
-  if (!tok){
+  function startWithToken(t){
+    var res = verifyToken(t);
+    if (!res){
+      app.innerHTML = '<div class="card error"><h1>⛔ Invalid Link</h1><p>This review link is not valid.<br>Please check the link or contact Avryx Studio.</p></div>';
+      return;
+    }
+    if (res.expired){
+      app.innerHTML = '<div class="card error"><h1>⌛ Link Expired</h1><p>This review link has expired.<br>Please ask Avryx Studio for a fresh link.</p></div>';
+      return;
+    }
+    boot(res.data);
+  }
+
+  if (tok){
+    startWithToken(tok);
+  } else if (pid){
+    var clean = String(pid).replace(/[^a-zA-Z0-9_-]/g,'').slice(0,40);
+    if (!clean){
+      app.innerHTML = '<div class="card error"><h1>⛔ Invalid Link</h1></div>';
+      return;
+    }
+    fetch('p/' + clean + '.json', {cache:'no-store'})
+      .then(function(r){ if (!r.ok) throw 0; return r.json(); })
+      .then(function(j){
+        if (!j.d || cyrb53(j.d + SECRET, 7) !== j.s) throw 0;
+        var data = JSON.parse(b64urlDecode(j.d));
+        if (Date.now() > data.e * 1000){
+          app.innerHTML = '<div class="card error"><h1>⌛ Link Expired</h1><p>This review link has expired.<br>Please ask Avryx Studio for a fresh link.</p></div>';
+          return;
+        }
+        boot(data);
+      })
+      .catch(function(){
+        app.innerHTML = '<div class="card error"><h1>⛔ Invalid Link</h1><p>This review link is not valid.<br>Please check the link or contact Avryx Studio.</p></div>';
+      });
+  } else {
     app.innerHTML = '<div class="card"><h1>🔒 Private Review Link</h1><p>This page needs a secure review link.<br>Please open the exact link shared with you by Avryx Studio.</p></div>';
     return;
   }
-  var res = verifyToken(tok);
-  if (!res){
-    app.innerHTML = '<div class="card error"><h1>⛔ Invalid Link</h1><p>This review link is not valid.<br>Please check the link or contact Avryx Studio.</p></div>';
-    return;
-  }
-  if (res.expired){
-    app.innerHTML = '<div class="card error"><h1>⌛ Link Expired</h1><p>This review link has expired.<br>Please ask Avryx Studio for a fresh link.</p></div>';
-    return;
-  }
 
-  var d = res.data;
+  function boot(d){
   var clientName = d.n || 'Guest';
 
   // ---- single-use access code gate ----
@@ -190,6 +218,7 @@
   } else {
     renderGallery();
   }
+  } // end boot
 })();
 </script>
 </body>
