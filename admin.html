@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Avryx Studio — Review Admin</title>
+<meta name="robots" content="noindex,nofollow">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0a0a0a; color:#eee; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; min-height:100vh; display:flex; flex-direction:column; align-items:center; }
+  header { width:100%; padding:18px 24px; border-bottom:1px solid #1c1c1c; }
+  .brand { font-weight:800; letter-spacing:2px; font-size:15px; }
+  .brand span { color:#ff2222; }
+  main { width:100%; max-width:640px; padding:32px 20px; flex:1; }
+  .card { background:#141414; border:1px solid #222; border-radius:14px; padding:28px; }
+  .card h1 { font-size:20px; margin-bottom:6px; }
+  .card p.sub { color:#888; font-size:13px; margin-bottom:20px; }
+  label { display:block; font-size:13px; color:#aaa; margin:14px 0 6px; }
+  input[type=text], input[type=password], input[type=url], input[type=number] { width:100%; padding:12px 14px; border-radius:8px; border:1px solid #333; background:#0d0d0d; color:#eee; font-size:14px; }
+  button { background:#ff2222; color:#fff; border:none; padding:12px 26px; border-radius:8px; font-size:15px; font-weight:700; cursor:pointer; margin-top:18px; }
+  button:hover { background:#e01b1b; }
+  button.ghost { background:#222; margin-left:8px; }
+  #result { margin-top:20px; display:none; }
+  #linkOut { background:#0d0d0d; border:1px solid #2a5a2a; color:#7ee787; padding:14px; border-radius:8px; font-size:13px; word-break:break-all; margin-top:10px; }
+  .hist { margin-top:26px; }
+  .hist h2 { font-size:15px; margin-bottom:10px; color:#bbb; }
+  .hitem { background:#101010; border:1px solid #222; border-radius:8px; padding:10px 14px; margin-bottom:8px; font-size:12px; }
+  .hitem a { color:#7eb8ff; word-break:break-all; }
+  .hitem .hm { color:#777; margin-top:4px; }
+  .warn { background:#2a1a05; border:1px solid #5a3a10; color:#e8a33d; padding:12px 14px; border-radius:8px; font-size:12px; margin-top:18px; line-height:1.5; }
+  #login { text-align:center; padding-top:40px; }
+</style>
+</head>
+<body oncontextmenu="return false">
+<header><div class="brand">AVRYX <span>STUDIO</span> — Review Admin</div></header>
+<main>
+  <div id="login" class="card">
+    <h1>🔐 Admin Login</h1>
+    <p class="sub">Enter the admin password to generate review links.</p>
+    <input type="password" id="pw" placeholder="Admin password" style="max-width:320px">
+    <br><button onclick="doLogin()">Unlock</button>
+    <p id="pwErr" style="color:#ff5555;font-size:13px;margin-top:10px;display:none">Wrong password.</p>
+  </div>
+
+  <div id="panel" class="card" style="display:none">
+    <h1>🔗 Generate Review Link</h1>
+    <p class="sub">Fill the details — a secure 48-hour link will be created.</p>
+    <label>Video title</label>
+    <input type="text" id="fTitle" placeholder="e.g. Temp Secure Plus — Draft 1">
+    <label>Client name (shown in watermark)</label>
+    <input type="text" id="fName" placeholder="e.g. Nandini">
+    <label>Direct video URL (MP4 / WebM)</label>
+    <input type="url" id="fUrl" placeholder="https://…/video.mp4">
+    <label>Link valid for (hours)</label>
+    <input type="number" id="fHrs" value="48" min="1" max="720">
+    <button onclick="genLink()">Generate Link</button>
+    <div id="result">
+      <label>Secure review link — send this to the client:</label>
+      <div id="linkOut"></div>
+      <button class="ghost" onclick="copyLink()">📋 Copy</button>
+      <a id="openLink" href="#" target="_blank"><button class="ghost">🔍 Test Open</button></a>
+    </div>
+    <div class="warn">⚠️ <b>Video hosting:</b> paste any <b>direct</b> video link (Google Drive direct link, or a file in this repo). Drive share-links won't play — use the direct format:<br><code>https://drive.google.com/uc?export=download&amp;id=FILE_ID</code></div>
+    <div class="hist"><h2>🕘 Recent links (this device)</h2><div id="histList"></div></div>
+  </div>
+</main>
+
+<script>
+(function(){
+  "use strict";
+  var SECRET = "avx_rev_2026_x7q2";
+  var ADMIN_PW = "avryx2026review"; // change me: edit this file
+  var BASE = location.origin + location.pathname.replace(/admin\.html?$/,'');
+
+  function cyrb53(str, seed){
+    var h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+    for (var i=0;i<str.length;i++){
+      var ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1>>>16), 2246822507) ^ Math.imul(h2 ^ (h2>>>13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2>>>16), 2246822507) ^ Math.imul(h1 ^ (h1>>>13), 3266489909);
+    return (h2>>>0).toString(16) + (h1>>>0).toString(16);
+  }
+  function b64urlEncode(s){
+    return btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+
+  window.doLogin = function(){
+    var v = document.getElementById('pw').value;
+    if (v === ADMIN_PW){
+      document.getElementById('login').style.display='none';
+      document.getElementById('panel').style.display='block';
+      renderHist();
+    } else {
+      document.getElementById('pwErr').style.display='block';
+    }
+  };
+  document.getElementById('pw').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
+
+  function saveHist(entry){
+    try {
+      var h = JSON.parse(localStorage.getItem('avx_rev_hist')||'[]');
+      h.unshift(entry); h = h.slice(0,30);
+      localStorage.setItem('avx_rev_hist', JSON.stringify(h));
+    } catch(e){}
+  }
+  function renderHist(){
+    var box = document.getElementById('histList');
+    var h = [];
+    try { h = JSON.parse(localStorage.getItem('avx_rev_hist')||'[]'); } catch(e){}
+    if (!h.length){ box.innerHTML = '<p style="color:#555;font-size:12px">No links generated yet.</p>'; return; }
+    box.innerHTML = h.map(function(x){
+      var d = new Date(x.at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+      return '<div class="hitem"><a href="'+x.link+'" target="_blank">'+x.link+'</a><div class="hm">'+esc(x.title)+' — '+esc(x.name)+' — '+d+'</div></div>';
+    }).join('');
+  }
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  var lastLink = '';
+  window.genLink = function(){
+    var title = document.getElementById('fTitle').value.trim();
+    var name = document.getElementById('fName').value.trim();
+    var url = document.getElementById('fUrl').value.trim();
+    var hrs = Math.max(1, parseInt(document.getElementById('fHrs').value||'48',10));
+    if (!url){ alert('Video URL required'); return; }
+    var payload = { v:url, n:name||'Guest', title:title||'Video Review', e: Math.floor(Date.now()/1000) + hrs*3600 };
+    var pb = b64urlEncode(JSON.stringify(payload));
+    var tok = pb + '.' + cyrb53(pb + SECRET, 7);
+    lastLink = BASE + '?t=' + tok;
+    document.getElementById('linkOut').textContent = lastLink;
+    document.getElementById('openLink').href = lastLink;
+    document.getElementById('result').style.display='block';
+    saveHist({ link:lastLink, title:payload.title, name:payload.n, at:Date.now() });
+    renderHist();
+  };
+  window.copyLink = function(){
+    if (navigator.clipboard) navigator.clipboard.writeText(lastLink);
+    else { var t=document.createElement('textarea'); t.value=lastLink; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+    alert('Copied!');
+  };
+})();
+</script>
+</body>
+</html>

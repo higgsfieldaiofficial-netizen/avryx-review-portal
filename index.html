@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Avryx Studio — Secure Video Review</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0a0a0a; color:#eee; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; min-height:100vh; display:flex; flex-direction:column; align-items:center; }
+  header { width:100%; padding:18px 24px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #1c1c1c; }
+  .logo { width:34px; height:34px; background:#ff2222; border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:900; color:#000; font-size:20px; }
+  .brand { font-weight:800; letter-spacing:2px; font-size:15px; }
+  .brand span { color:#ff2222; }
+  main { width:100%; max-width:960px; padding:32px 20px; flex:1; }
+  .card { background:#141414; border:1px solid #222; border-radius:14px; padding:32px; text-align:center; }
+  .card h1 { font-size:22px; margin-bottom:10px; }
+  .card p { color:#999; font-size:14px; line-height:1.6; }
+  .error { border-color:#5a1a1a; }
+  .error h1 { color:#ff5555; }
+  .videowrap { position:relative; width:100%; border-radius:12px; overflow:hidden; background:#000; border:1px solid #222; }
+  video { width:100%; display:block; max-height:70vh; }
+  #watermark { position:absolute; pointer-events:none; color:rgba(255,255,255,.55); font-size:15px; font-weight:600; text-shadow:0 1px 4px rgba(0,0,0,.8); white-space:nowrap; transition:top 1s ease,left 1s ease; z-index:5; }
+  .meta { margin-top:16px; color:#888; font-size:13px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+  .badge { display:inline-block; background:#12300f; color:#7ee787; border:1px solid #1d4d16; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; }
+  footer { padding:20px; color:#555; font-size:12px; text-align:center; }
+  input[type=text] { width:100%; max-width:420px; padding:12px 16px; border-radius:8px; border:1px solid #333; background:#0d0d0d; color:#eee; font-size:15px; margin:16px 0 8px; }
+  button { background:#ff2222; color:#fff; border:none; padding:12px 28px; border-radius:8px; font-size:15px; font-weight:700; cursor:pointer; }
+  button:hover { background:#e01b1b; }
+</style>
+</head>
+<body oncontextmenu="return false">
+<header>
+  <div class="logo">A</div>
+  <div class="brand">AVRYX <span>STUDIO</span></div>
+</header>
+<main>
+  <div id="app"><div class="card"><h1>Loading…</h1></div></div>
+</main>
+<footer>© Avryx Studio — Private review link. Do not share or redistribute.</footer>
+
+<script>
+/* ===== Secure Review Portal (static) ===== */
+(function(){
+  "use strict";
+  var SECRET = "avx_rev_2026_x7q2"; // token signing secret (obfuscated, not bulletproof)
+
+  function cyrb53(str, seed){
+    var h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+    for (var i=0;i<str.length;i++){
+      var ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1>>>16), 2246822507) ^ Math.imul(h2 ^ (h2>>>13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2>>>16), 2246822507) ^ Math.imul(h1 ^ (h1>>>13), 3266489909);
+    return (h2>>>0).toString(16) + (h1>>>0).toString(16);
+  }
+  function b64urlEncode(s){
+    return btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+  function b64urlDecode(s){
+    s = s.replace(/-/g,'+').replace(/_/g,'/');
+    while (s.length % 4) s += '=';
+    return decodeURIComponent(escape(atob(s)));
+  }
+  function sign(payloadB64){ return cyrb53(payloadB64 + SECRET, 7); }
+
+  function verifyToken(tok){
+    try {
+      var parts = tok.split('.');
+      if (parts.length !== 2) return null;
+      if (sign(parts[0]) !== parts[1]) return null;
+      var data = JSON.parse(b64urlDecode(parts[0]));
+      if (!data.v || !data.e) return null;
+      if (Date.now() > data.e * 1000) return { expired:true, data:data };
+      return { ok:true, data:data };
+    } catch(e){ return null; }
+  }
+
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  var app = document.getElementById('app');
+  var params = new URLSearchParams(location.search);
+  var tok = params.get('t');
+
+  if (!tok){
+    app.innerHTML = '<div class="card"><h1>🔒 Private Review Link</h1><p>This page needs a secure review link.<br>Please open the exact link shared with you by Avryx Studio.</p></div>';
+    return;
+  }
+
+  var res = verifyToken(tok);
+  if (!res){
+    app.innerHTML = '<div class="card error"><h1>⛔ Invalid Link</h1><p>This review link is not valid.<br>Please check the link or contact Avryx Studio.</p></div>';
+    return;
+  }
+  if (res.expired){
+    app.innerHTML = '<div class="card error"><h1>⌛ Link Expired</h1><p>This review link has expired.<br>Please ask Avryx Studio for a fresh link.</p></div>';
+    return;
+  }
+
+  var d = res.data;
+  var clientName = d.n || 'Guest';
+  var expDate = new Date(d.e * 1000);
+  var expStr = expDate.toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+
+  app.innerHTML =
+    '<div class="card" style="text-align:left">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">' +
+        '<h1 style="font-size:18px">🎬 ' + esc(d.title || 'Video Review') + '</h1>' +
+        '<span class="badge">● Secure preview</span>' +
+      '</div>' +
+      '<div class="videowrap" id="vw">' +
+        '<video id="vid" controls controlsList="nodownload noplaybackrate" disablepictureinpicture playsinline preload="metadata"></video>' +
+        '<div id="watermark"></div>' +
+      '</div>' +
+      '<div class="meta"><span>👤 ' + esc(clientName) + '</span><span>⏳ Link valid till ' + esc(expStr) + '</span></div>' +
+      '<p style="margin-top:14px;font-size:12px;color:#666">This video is watermarked and tracked. Downloading, screen recording or redistribution is prohibited.</p>' +
+    '</div>';
+
+  var vid = document.getElementById('vid');
+  vid.src = d.v;
+
+  // Moving watermark: client name + live timestamp
+  var wm = document.getElementById('watermark');
+  var vw = document.getElementById('vw');
+  function moveWm(){
+    var dnow = new Date();
+    var ts = dnow.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    wm.textContent = '© ' + clientName + '  •  ' + ts;
+    var maxX = Math.max(0, vw.clientWidth - wm.offsetWidth - 16);
+    var maxY = Math.max(0, vw.clientHeight - 40);
+    wm.style.left = (8 + Math.random()*maxX) + 'px';
+    wm.style.top = (8 + Math.random()*maxY) + 'px';
+  }
+  moveWm();
+  setInterval(moveWm, 4000);
+
+  // Anti-download: block right click (already on body), drag, and keys
+  vid.addEventListener('dragstart', function(e){ e.preventDefault(); });
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'F12') e.preventDefault();
+    if ((e.ctrlKey||e.metaKey) && ['s','p','u','c'].indexOf(e.key.toLowerCase()) !== -1) e.preventDefault();
+    if ((e.ctrlKey||e.metaKey) && e.shiftKey && ['i','j'].indexOf(e.key.toLowerCase()) !== -1) e.preventDefault();
+  });
+  // Block long-press context menu on mobile
+  document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+})();
+</script>
+</body>
+</html>
