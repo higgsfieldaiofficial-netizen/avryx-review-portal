@@ -11,7 +11,7 @@
   header { width:100%; padding:18px 24px; border-bottom:1px solid #1c1c1c; }
   .brand { font-weight:800; letter-spacing:2px; font-size:15px; }
   .brand span { color:#ff2222; }
-  main { width:100%; max-width:640px; padding:32px 20px; flex:1; }
+  main { width:100%; max-width:680px; padding:32px 20px; flex:1; }
   .card { background:#141414; border:1px solid #222; border-radius:14px; padding:28px; }
   .card h1 { font-size:20px; margin-bottom:6px; }
   .card p.sub { color:#888; font-size:13px; margin-bottom:20px; }
@@ -20,6 +20,13 @@
   button { background:#ff2222; color:#fff; border:none; padding:12px 26px; border-radius:8px; font-size:15px; font-weight:700; cursor:pointer; margin-top:18px; }
   button:hover { background:#e01b1b; }
   button.ghost { background:#222; margin-left:8px; }
+  button.add { background:#1d4d16; margin-top:12px; font-size:14px; padding:10px 20px; }
+  button.add:hover { background:#276a1e; }
+  button.rm { background:#3a1515; font-size:12px; padding:6px 12px; margin-top:8px; }
+  .cliprow { background:#101010; border:1px solid #2a2a2a; border-radius:10px; padding:14px; margin-bottom:12px; position:relative; }
+  .cliprow .num { position:absolute; top:10px; right:14px; color:#555; font-size:12px; font-weight:700; }
+  .cliprow label { margin-top:10px; }
+  .cliprow label:first-of-type { margin-top:0; }
   #result { margin-top:20px; display:none; }
   #linkOut { background:#0d0d0d; border:1px solid #2a5a2a; color:#7ee787; padding:14px; border-radius:8px; font-size:13px; word-break:break-all; margin-top:10px; }
   .hist { margin-top:26px; }
@@ -44,23 +51,22 @@
 
   <div id="panel" class="card" style="display:none">
     <h1>🔗 Generate Review Link</h1>
-    <p class="sub">Fill the details — a secure 48-hour link will be created.</p>
-    <label>Video title</label>
-    <input type="text" id="fTitle" placeholder="e.g. Temp Secure Plus — Draft 1">
+    <p class="sub">Add one or many clips — a single secure link will show them all.</p>
     <label>Client name (shown in watermark)</label>
     <input type="text" id="fName" placeholder="e.g. Nandini">
-    <label>Direct video URL (MP4 / WebM)</label>
-    <input type="url" id="fUrl" placeholder="https://…/video.mp4">
     <label>Link valid for (hours)</label>
-    <input type="number" id="fHrs" value="48" min="1" max="720">
-    <button onclick="genLink()">Generate Link</button>
+    <input type="number" id="fHrs" value="48" min="1" max="720" style="max-width:160px">
+    <div style="margin-top:18px"><b style="font-size:14px">🎬 Clips</b></div>
+    <div id="clips"></div>
+    <button class="add" onclick="addClip()">＋ Add clip</button>
+    <br><button onclick="genLink()">Generate Link</button>
     <div id="result">
       <label>Secure review link — send this to the client:</label>
       <div id="linkOut"></div>
       <button class="ghost" onclick="copyLink()">📋 Copy</button>
       <a id="openLink" href="#" target="_blank"><button class="ghost">🔍 Test Open</button></a>
     </div>
-    <div class="warn">⚠️ <b>Video hosting:</b> paste any <b>direct</b> video link (Google Drive direct link, or a file in this repo). Drive share-links won't play — use the direct format:<br><code>https://drive.google.com/uc?export=download&amp;id=FILE_ID</code></div>
+    <div class="warn">⚠️ <b>Video hosting:</b> paste any <b>direct</b> video link (Google Drive direct link, or a file on this portal). Drive share-links won't play — use the direct format:<br><code>https://drive.google.com/uc?export=download&amp;id=FILE_ID</code><br>Tip: keep portal-hosted MP4s faststart-encoded so they stream instantly.</div>
     <div class="hist"><h2>🕘 Recent links (this device)</h2><div id="histList"></div></div>
   </div>
 </main>
@@ -69,7 +75,7 @@
 (function(){
   "use strict";
   var SECRET = "avx_rev_2026_x7q2";
-  var ADMIN_PW = "avryx2026review"; // change me: edit this file
+  var ADMIN_PW = "avryx2026review";
   var BASE = location.origin + location.pathname.replace(/admin\.html?$/,'');
 
   function cyrb53(str, seed){
@@ -86,18 +92,30 @@
   function b64urlEncode(s){
     return btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   }
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   window.doLogin = function(){
-    var v = document.getElementById('pw').value;
-    if (v === ADMIN_PW){
+    if (document.getElementById('pw').value === ADMIN_PW){
       document.getElementById('login').style.display='none';
       document.getElementById('panel').style.display='block';
       renderHist();
-    } else {
-      document.getElementById('pwErr').style.display='block';
-    }
+    } else document.getElementById('pwErr').style.display='block';
   };
   document.getElementById('pw').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
+
+  var clipCount = 0;
+  window.addClip = function(title, url){
+    clipCount++;
+    var box = document.getElementById('clips');
+    var div = document.createElement('div');
+    div.className = 'cliprow';
+    div.innerHTML = '<span class="num">#' + clipCount + '</span>' +
+      '<label>Clip name / category</label><input type="text" class="cTitle" placeholder="e.g. Cargo Loading" value="' + esc(title||'') + '">' +
+      '<label>Direct video URL (MP4 / WebM)</label><input type="url" class="cUrl" placeholder="https://…/video.mp4" value="' + esc(url||'') + '">' +
+      '<button class="rm" onclick="this.parentNode.remove()">✕ Remove</button>';
+    box.appendChild(div);
+  };
+  addClip(); // start with one row
 
   function saveHist(entry){
     try {
@@ -107,32 +125,34 @@
     } catch(e){}
   }
   function renderHist(){
-    var box = document.getElementById('histList');
-    var h = [];
+    var box = document.getElementById('histList'), h = [];
     try { h = JSON.parse(localStorage.getItem('avx_rev_hist')||'[]'); } catch(e){}
     if (!h.length){ box.innerHTML = '<p style="color:#555;font-size:12px">No links generated yet.</p>'; return; }
     box.innerHTML = h.map(function(x){
-      var d = new Date(x.at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-      return '<div class="hitem"><a href="'+x.link+'" target="_blank">'+x.link+'</a><div class="hm">'+esc(x.title)+' — '+esc(x.name)+' — '+d+'</div></div>';
+      var dt = new Date(x.at).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+      return '<div class="hitem"><a href="'+x.link+'" target="_blank">'+x.link+'</a><div class="hm">'+esc(x.label)+' — '+dt+'</div></div>';
     }).join('');
   }
-  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   var lastLink = '';
   window.genLink = function(){
-    var title = document.getElementById('fTitle').value.trim();
-    var name = document.getElementById('fName').value.trim();
-    var url = document.getElementById('fUrl').value.trim();
+    var name = document.getElementById('fName').value.trim() || 'Guest';
     var hrs = Math.max(1, parseInt(document.getElementById('fHrs').value||'48',10));
-    if (!url){ alert('Video URL required'); return; }
-    var payload = { v:url, n:name||'Guest', title:title||'Video Review', e: Math.floor(Date.now()/1000) + hrs*3600 };
+    var rows = document.querySelectorAll('#clips .cliprow');
+    var pl = [];
+    rows.forEach(function(r, i){
+      var t = r.querySelector('.cTitle').value.trim();
+      var u = r.querySelector('.cUrl').value.trim();
+      if (u) pl.push({ t: t || ('Clip ' + (i+1)), v: u });
+    });
+    if (!pl.length){ alert('Add at least one clip with a video URL'); return; }
+    var payload = { pl: pl, n: name, e: Math.floor(Date.now()/1000) + hrs*3600 };
     var pb = b64urlEncode(JSON.stringify(payload));
-    var tok = pb + '.' + cyrb53(pb + SECRET, 7);
-    lastLink = BASE + '?t=' + tok;
+    lastLink = BASE + '?t=' + pb + '.' + cyrb53(pb + SECRET, 7);
     document.getElementById('linkOut').textContent = lastLink;
     document.getElementById('openLink').href = lastLink;
     document.getElementById('result').style.display='block';
-    saveHist({ link:lastLink, title:payload.title, name:payload.n, at:Date.now() });
+    saveHist({ link:lastLink, label: pl.length + ' clip(s) — ' + name, at:Date.now() });
     renderHist();
   };
   window.copyLink = function(){
