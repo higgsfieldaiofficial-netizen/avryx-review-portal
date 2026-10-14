@@ -23,6 +23,16 @@
   .videowrap { position:relative; width:100%; border-radius:12px; overflow:hidden; background:#000; border:1px solid #222; }
   video { width:100%; display:block; max-height:70vh; }
   .watermark { position:absolute; pointer-events:none; color:rgba(255,255,255,.55); font-size:15px; font-weight:600; text-shadow:0 1px 4px rgba(0,0,0,.8); white-space:nowrap; transition:top 1s ease,left 1s ease; z-index:5; }
+  .ccontrols { position:absolute; left:0; right:0; bottom:0; display:flex; align-items:center; gap:10px; padding:10px 12px; background:linear-gradient(transparent, rgba(0,0,0,.7)); z-index:6; }
+  .ccontrols button { background:rgba(255,255,255,.16); border:0; color:#fff; width:36px; height:36px; border-radius:50%; font-size:15px; cursor:pointer; flex:0 0 auto; }
+  .ccontrols button:active { background:rgba(255,255,255,.3); }
+  .cc-track { flex:1; height:6px; background:rgba(255,255,255,.25); border-radius:3px; cursor:pointer; }
+  .cc-fill { height:100%; width:0; background:#ff2222; border-radius:3px; }
+  .cc-time { color:#fff; font-size:11px; white-space:nowrap; }
+  .videowrap:fullscreen { border-radius:0; border:0; }
+  .videowrap:fullscreen video { max-height:none; height:100%; }
+  .videowrap:fullscreen .watermark { font-size:22px; color:rgba(255,255,255,.75); background:rgba(0,0,0,.35); padding:6px 14px; border-radius:8px; }
+  .videowrap:fullscreen .ccontrols { padding:14px 18px; }
   .meta { margin-top:16px; color:#888; font-size:13px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; }
   .badge { display:inline-block; background:#12300f; color:#7ee787; border:1px solid #1d4d16; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; }
   .count { color:#888; font-size:13px; }
@@ -165,7 +175,8 @@
 
     d.pl.forEach(function(clip, i){
       html += '<div class="clip"><div class="cliphead"><h2>🎬 ' + esc(clip.t || ('Clip ' + (i+1))) + '</h2></div>' +
-        '<div class="videowrap"><video controls controlsList="nodownload noplaybackrate" disablepictureinpicture playsinline preload="metadata" data-src="' + esc(clip.v) + '"></video><div class="watermark"></div></div></div>';
+        '<div class="videowrap"><video playsinline disablepictureinpicture preload="metadata" data-src="' + esc(clip.v) + '"></video><div class="watermark"></div>' +
+        '<div class="ccontrols"><button class="cc-play" aria-label="Play">▶</button><div class="cc-track"><div class="cc-fill"></div></div><span class="cc-time">0:00 / 0:00</span><button class="cc-mute" aria-label="Mute">🔊</button><button class="cc-fs" aria-label="Fullscreen">⛶</button></div></div></div>';
     });
     html += '<p class="note" style="text-align:center">These videos are watermarked and tracked. Downloading, screen recording or redistribution is prohibited.</p>';
     app.innerHTML = html;
@@ -189,7 +200,37 @@
       wm.style.top = (8 + Math.random()*maxY) + 'px';
     }
     var wraps = Array.prototype.slice.call(document.querySelectorAll('.videowrap'));
+    function fmtT(s){ s=Math.max(0,Math.floor(s||0)); var m=Math.floor(s/60), ss=s%60; return m+':'+(ss<10?'0':'')+ss; }
     wraps.forEach(function(w){
+      var v = w.querySelector('video');
+      var playBtn = w.querySelector('.cc-play');
+      var muteBtn = w.querySelector('.cc-mute');
+      var fsBtn = w.querySelector('.cc-fs');
+      var track = w.querySelector('.cc-track');
+      var fill = w.querySelector('.cc-fill');
+      var timeEl = w.querySelector('.cc-time');
+      function updPlay(){ playBtn.textContent = v.paused ? '▶' : '⏸'; }
+      function toggle(){ if (v.paused){ v.play(); } else { v.pause(); } updPlay(); }
+      playBtn.onclick = toggle;
+      v.addEventListener('click', toggle);
+      v.addEventListener('play', updPlay);
+      v.addEventListener('pause', updPlay);
+      v.addEventListener('loadedmetadata', function(){ timeEl.textContent = '0:00 / ' + fmtT(v.duration); });
+      v.addEventListener('timeupdate', function(){
+        if (v.duration) fill.style.width = (v.currentTime/v.duration*100) + '%';
+        timeEl.textContent = fmtT(v.currentTime) + ' / ' + fmtT(v.duration);
+      });
+      track.addEventListener('click', function(e){
+        var r = track.getBoundingClientRect();
+        var p = (e.clientX - r.left)/r.width;
+        if (v.duration) v.currentTime = Math.max(0, Math.min(1, p)) * v.duration;
+      });
+      muteBtn.onclick = function(){ v.muted = !v.muted; muteBtn.textContent = v.muted ? '🔇' : '🔊'; };
+      fsBtn.onclick = function(){
+        if (document.fullscreenElement){ document.exitFullscreen(); }
+        else if (w.requestFullscreen){ w.requestFullscreen(); }
+        else if (v.webkitEnterFullscreen){ v.webkitEnterFullscreen(); }
+      };
       moveWm(w);
       setInterval(function(){ moveWm(w); }, 4000);
     });
