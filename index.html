@@ -124,21 +124,19 @@
   function boot(d){
   var clientName = d.n || 'Guest';
 
-  // ---- single-use access code gate ----
-  function usedNonces(){
-    try { return JSON.parse(localStorage.getItem('avx_used_codes')||'[]'); }
-    catch(e){ return []; }
+  // ---- access code gate (session persists on this device until link expiry) ----
+  function getSession(){
+    try { return JSON.parse(localStorage.getItem('avx_session')||'null'); }
+    catch(e){ return null; }
   }
-  function markNonceUsed(nonce){
-    try {
-      var u = usedNonces(); u.push(nonce);
-      localStorage.setItem('avx_used_codes', JSON.stringify(u.slice(-100)));
-    } catch(e){}
+  function saveSession(nonce){
+    try { localStorage.setItem('avx_session', JSON.stringify({nonce:nonce, t:Date.now()})); }
+    catch(e){}
   }
   function showCodeGate(msg){
     app.innerHTML = '<div class="card" style="max-width:420px;margin:40px auto">' +
       '<h1>🔑 Enter Access Code</h1>' +
-      '<p>Enter the 6-digit access code shared with you by Avryx Studio.<br>Each code works <b>one time only</b>.</p>' +
+      '<p>Enter the 6-digit access code shared with you by Avryx Studio.</p>' +
       '<input type="text" id="codeIn" inputmode="numeric" maxlength="6" placeholder="••••••" style="text-align:center;font-size:24px;letter-spacing:8px;font-weight:800">' +
       '<br><button id="codeBtn">Unlock Videos</button>' +
       (msg ? '<p id="codeMsg" style="color:#ff5555;font-size:13px;margin-top:12px">'+esc(msg)+'</p>' : '<p id="codeMsg" style="font-size:13px;margin-top:12px"></p>') +
@@ -147,12 +145,9 @@
     inp.focus();
     function tryUnlock(){
       var val = inp.value.replace(/\D/g,'');
-      if (val === String(d.code) && usedNonces().indexOf(d.nonce) === -1){
-        markNonceUsed(d.nonce);
+      if (val === String(d.code)){
+        saveSession(d.nonce);
         renderGallery();
-      } else if (usedNonces().indexOf(d.nonce) !== -1){
-        document.getElementById('codeMsg').textContent = 'This code has already been used. Please ask Avryx Studio for a new code.';
-        document.getElementById('codeMsg').style.color = '#ff5555';
       } else {
         document.getElementById('codeMsg').textContent = 'Wrong code. Try again.';
         document.getElementById('codeMsg').style.color = '#ff5555';
@@ -208,10 +203,12 @@
     document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   }
 
-  // entry: code gate if the link carries a code, else direct gallery
+  // entry: code gate if the link carries a code, else direct gallery.
+  // Once unlocked, the session persists on this device — refresh won't ask for the code again — until the link expires.
   if (d.code){
-    if (usedNonces().indexOf(d.nonce) !== -1){
-      showCodeGate('This access code has already been used. Please ask Avryx Studio for a new code.');
+    var s = getSession();
+    if (s && s.nonce === d.nonce){
+      renderGallery();
     } else {
       showCodeGate('');
     }
